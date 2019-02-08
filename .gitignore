@@ -1,0 +1,24 @@
+# Maven
+target/
+
+# Eclipse
+.settings/
+.classpath
+.project
+
+# IntelliJ IDEA
+.idea
+*.iml
+
+# Branch switching
+generated/
+
+.DS_Store
+
+**/.*.sw?
+**/*.NOT_READY
+.json
+.env
+
+.apt_generated/
+

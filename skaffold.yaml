@@ -1,0 +1,30 @@
+apiVersion: skaffold/v1beta2
+kind: Config
+build:
+  artifacts:
+  - image: changeme
+    context: .
+    docker: {}
+  tagPolicy:
+    envTemplate:
+      template: '{{.DOCKER_REGISTRY}}/sathi2/spring-petclinic-gcp:{{.VERSION}}'
+  local: {}
+deploy:
+  kubectl: {}
+profiles:
+- name: dev
+  build:
+    artifacts:
+    - docker: {}
+    tagPolicy:
+      envTemplate:
+        template: '{{.DOCKER_REGISTRY}}/sathi2/spring-petclinic-gcp:{{.DIGEST_HEX}}'
+    local: {}
+  deploy:
+    helm:
+      releases:
+      - name: spring-petclinic-gcp
+        chartPath: charts/spring-petclinic-gcp
+        setValueTemplates:
+          image.repository: '{{.DOCKER_REGISTRY}}/sathi2/spring-petclinic-gcp'
+          image.tag: '{{.DIGEST_HEX}}'

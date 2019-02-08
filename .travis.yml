@@ -1,0 +1,89 @@
+language: java
+sudo: required
+
+services:
+- docker
+
+branches:
+  only:
+  - master
+
+jdk:
+- openjdk8
+
+cache:
+  directories:
+  - $HOME/google-cloud-sdk
+  - $HOME/.m2
+
+before_install:
+- export CLOUDSDK_CORE_DISABLE_PROMPTS=1
+- openssl aes-256-cbc -K $encrypted_3cc93b35c21b_key -iv $encrypted_3cc93b35c21b_iv -in travis-ci-petclinic.json.enc -out travis-ci-petclinic.json -d
+- if [ ! -d "$HOME/google-cloud-sdk/bin" ]; then
+    rm -rf $HOME/google-cloud-sdk;
+    curl https://sdk.cloud.google.com | bash;
+  fi
+- source $HOME/google-cloud-sdk/path.bash.inc
+- gcloud auth activate-service-account --key-file=$TRAVIS_BUILD_DIR/travis-ci-petclinic.json
+- gcloud config set core/project $PROJECT_ID
+- gcloud components install beta kubectl
+- export DOCKER_GOOGLE_CREDENTIALS=$TRAVIS_BUILD_DIR/travis-ci-petclinic.json
+- export TRIGGER_PATTERNS_IGNORE="\.md$"
+- export TRIGGER_PATTERNS_BUILD_ALL="^pom\.xml|^\.travis\.yml"
+- export TRIGGER_PATTERNS_MODULES="^spring-petclinic-"
+- export TRIGGER_PATTERNS_KUBERNETES="^kubernetes/.*\.yaml"
+- export TRIGGER_PATTERNS_ISTIO="^istio/.*\.yaml"
+- shopt -s expand_aliases
+- alias cl="git diff --name-only $TRAVIS_COMMIT_RANGE"
+- if cl | grep -q -E -e "$TRIGGER_PATTERNS_BUILD_ALL" -e "$TRIGGER_PATTERNS_MODULES"; then
+    git clone https://github.com/saturnism/spring-cloud-gcp.git $HOME/spring-cloud-gcp;
+    pushd $HOME/spring-cloud-gcp;
+    git checkout 128-bit-trace-id;
+    ./mvnw -DskipTests=true -Dmaven.javadoc.skip=true install;
+    popd;
+  fi
+
+script:
+- echo "Build Spring Cloud GCP Snapshot"
+- echo "Changed Files:" && cl
+- |
+  if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then
+    export MAVEN_PROFILE="";
+  else
+    CLOUDSDK_CONTAINER_USE_V1_API=false gcloud beta container clusters get-credentials petclinic-cluster --region=us-central1;
+    echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    export MAVEN_PROFILE="-PbuildDocker";
+  fi
+- |
+  if cl | grep -q -E "$TRIGGER_PATTERNS_BUILD_ALL"; then
+    echo "Build & Push All";
+    ./mvnw install $MAVEN_PROFILE -Ddocker.image.tag=$TRAVIS_BRANCH-$TRAVIS_BUILD_NUMBER;
+  else
+    cl | grep -v -E "$TRIGGER_PATTERNS_IGNORE" | cut -d/ -f1 | sort | uniq | grep -E "$TRIGGER_PATTERNS_MODULES" > /tmp/modules_list;
+    if [ -s /tmp/modules_list ]; then
+      echo "Changed Modules:" && cat /tmp/modules_list;
+      echo "Build & Push Changed Modules";
+      ./mvnw install -N;
+      for MODULE in $(cat /tmp/modules_list)
+      do
+        echo "Build & Push $MODULE";
+        ./mvnw install $MAVEN_PROFILE -pl $MODULE -Ddocker.image.tag=$TRAVIS_BRANCH-$TRAVIS_BUILD_NUMBER;
+      done
+    else
+      echo "Skipping Build" && cl;
+    fi
+  fi
+- |
+  if cl | grep -v "$TRIGGER_PATTERNS_IGNORE" | grep -q -E "$TRIGGER_PATTERNS_KUBERNETES"; then
+    echo "Deploying to Kubernetes";
+    kubectl apply -f kubernetes/
+  else
+    echo "Skipping Kubernetes Deployment";
+  fi
+- |
+  if cl | grep -v "$TRIGGER_PATTERNS_IGNORE" | grep -q -E "$TRIGGER_PATTERNS_ISTIO"; then
+    echo "Deploying to Istio";
+    kubectl apply -f istio/
+  else
+    echo "Skipping Istio Deployment";
+  fi
