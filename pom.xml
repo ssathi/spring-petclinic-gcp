@@ -45,6 +45,7 @@
         <module>spring-petclinic-visits-service</module>
         <module>spring-petclinic-new-service</module>
         <module>spring-petclinic-new-service2</module>
+        <module>spring-petclinic-service3</module>
         <!--
         <module>spring-petclinic-admin-server</module>
         -->
