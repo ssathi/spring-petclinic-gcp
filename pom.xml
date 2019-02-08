@@ -43,6 +43,7 @@
         <module>spring-petclinic-customers-service</module>
         <module>spring-petclinic-vets-service</module>
         <module>spring-petclinic-visits-service</module>
+        <module>spring-petclinic-new-service</module>
         <!--
         <module>spring-petclinic-admin-server</module>
         -->
